@@ -1,0 +1,15 @@
+Antibiotic Category,brd_nrrw_cat,generic_nam
+Narrower-spectrum penicillins,narrow,"amoxicillin, ampicillin, penicillin "
+First-generation cephalosporins,narrow,"cefadroxil, cephalexin, cephradine"
+ErythromycinA,narrow,erythromycin
+"Beta-lactams, increased activity",broad,amoxicillin-clavulanate
+Second-and third-generation cephalosporins,broad,"cefaclor, cefprozil, cefuroxime, loracarbef, cefdinir, cefditoren, cefixime, cefpodoxime, ceftibuten"
+Fluoroquinolones,broad,"ciprofloxacin, gemifloxacin, levofloxacin, moxifloxacin, norfloxacin, ofloxacin, trovafloxacin"
+MacrolidesA,broad,"azithromycin, clarithromycin"
+Lincosamides,broad,clindamycin
+Other ,broad,telithromycin
+Tetracyclines,exclude,"demeclocycline, minocycline, tetracycline, doxycycline"
+Trimethoprim-sulfamethoxazole,exclude,"erythromycin-sulfisoxazole, sulfadiazine, trimethoprim-sulfamethoxazole, sulfisoxazole, sulfisoxazole acetyl, trimethoprim "
+Broader-spectrum penicillins,exclude,"cloxacillin, dicloxacillin, oxacillin"
+Other,exclude,"bacitracin, chloramphenicol, linezolid, neomycin, polymyxin b sulfate, vancomycin, fidaxomicin"
+Urinary anti-infectivesB,exclude,"Nitrofurantoin, phenazopyridine and combinations, methenamine and combinations, fosfomycin, phosphoric acid, potassium sodium, methylene blue and combinations, nalidixic acid"

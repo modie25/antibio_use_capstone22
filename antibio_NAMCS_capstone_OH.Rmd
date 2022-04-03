@@ -1,0 +1,375 @@
+---
+title: "antibio_namcs_capstone_OH"
+author: "Odalis Hernandez"
+date: "4/4/2022"
+output: html_document
+---
+---
+title: "Predicting Antibiotic Utilization Patterns in Ambulatory Care: Capstone"
+author: "Odalis Hernandez"
+date: "4/4/2022"
+output: html_document
+---
+
+```{r load-packages, message=FALSE}
+library(haven)
+library(foreign)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(readxl)
+library(table1)
+library(tableone)
+library(ggplot2)
+library(odds.n.ends)
+library(forecast)
+```
+
+
+```{r, load-data, echo=false}
+#dataset for regression
+namcs2018_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2018-spss.sav", to.data.frame=TRUE
+    )
+
+#historical datasets for time series
+namcs2012_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2012-spss.sav", to.data.frame=TRUE
+    )
+namcs2013_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2013-spss.sav", to.data.frame=TRUE
+    )
+namcs2014_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2014-spss.sav", to.data.frame=TRUE
+    )
+namcs2015_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2015-spss.sav", to.data.frame=TRUE
+    )
+namcs2016_full <-
+  read.spss(
+    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2016-spss.sav", to.data.frame=TRUE
+    )
+```
+
+## Data Cleaning
+```{r}
+#cleaning. Selecting relevant variables
+#opening libraries
+namcs2018<-namcs2018_full%>%
+  select(`AGE`, `VMONTH`, `SEX`, `RACERETH`, `PAYTYPER`,`RFV1`,`PRIMCARE`, `SENBEFOR`, `PASTVIS`,`MAJOR`, `DIAG1`,`TEMPTAKE`, `TEMPF`,`MED`,`MED1`,`NCMED1`,`NOPROVID`,`PHYS`,`PHYSASST`,`NPNMW`,`RNLPN`,`MHP`,`OTHPROV`,`PROVNONE`,`TIMEMD`,`DRUGID1`,`RX1CAT1`)
+
+#find which values contain multum class "Anti-infectives"
+namcs2018_anti<-namcs2018%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))%>%
+  mutate(AGE=recode_factor(.x=AGE,
+                           `Under 1 year`= "0",
+                           `93 years and over`="93"))%>%
+  mutate(AGE=as.numeric(AGE))%>%
+  mutate(PASTVIS=as.numeric(PASTVIS))%>%
+  mutate(TEMPF=as.numeric(TEMPF))%>%
+  mutate(TIMEMD=as.numeric(TIMEMD))%>%
+  mutate(timemd_int=case_when(TIMEMD %in% c(1:15)~ "Less than 15 minutes", #as.numeric adds 1 minute
+                              TIMEMD %in% c(16:31)~ "15 to 30 minutes",
+                              TIMEMD %in% c(32:46)~ "31 to 45 minutes",
+                              TIMEMD %in% c(47:200)~ "More than 45 minutes"))%>%
+  mutate(timemd_int=as.factor(timemd_int))%>%
+  mutate(timemd_int=relevel(timemd_int, ref= c("Less than 15 minutes")))%>%
+  mutate(past_20=case_when(PASTVIS %in% c(0:20)~ "20 or fewer", 
+                           PASTVIS %in% c(21:100)~ "21 or more"))%>%
+  mutate(past_20=as.factor(past_20))%>%
+  mutate(past_20=relevel(past_20, ref= c("20 or fewer")))%>%
+  mutate(DRUGID1=tolower(DRUGID1))
+
+
+#check to make sure we included all anti-infective cases
+# rx_anti<-stringr::str_detect(namcs2018$RX1CAT1, 'Anti-infectives')
+# length(rx_anti[rx_anti== TRUE])
+
+#checking summary and class
+summary(namcs2018_anti)
+lapply(namcs2018_anti,class)
+```
+
+```{r}
+
+who_aware_full <- read_excel("WHO-EMP-IAU-2019.11-eng.xlsx", sheet=2,skip = 3)
+
+who_aware<-who_aware_full%>%
+   select(`Antibiotic`, `Class`,`Category`)%>%
+   mutate(Antibiotic=tolower(Antibiotic))%>%
+   mutate(Antibiotic=recode(Antibiotic,"amoxicillin/clavulanic acid"= "amoxicillin-clavulanate"))%>%
+   mutate(Antibiotic=recode(Antibiotic, "cefalexin"="cephalexin"))%>%
+   mutate(Antibiotic=recode(Antibiotic, "sulfamethoxazole/trimethoprim"="sulfamethoxazole-trimethoprim"))%>%
+   mutate(Antibiotic=recode(Antibiotic, "vancomycin (oral)"="vancomycin"))%>%
+   mutate(Antibiotic=recode(Antibiotic, "minocycline (oral)"="minocycline"))%>%
+   mutate(Antibiotic=recode(Antibiotic, "fosfomycin (oral)"="fosfomycin"))
+  
+
+namcs2018_anti<-left_join(namcs2018_anti,who_aware, by=c("DRUGID1"="Antibiotic"))
+```
+
+```{r}
+#cleaning 2014 historical dataset
+namcs2012<-namcs2012_full%>%
+  select(`VMONTH`, `RX1CAT1`,DRUGID1)%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))
+
+namcs2013<-namcs2013_full%>%
+  select(`VMONTH`, `RX1CAT1`,DRUGID1)%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))
+
+namcs2014<-namcs2014_full%>%
+  select(`VMONTH`, `RX1CAT1`,DRUGID1)%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))
+
+namcs2015<-namcs2015_full%>%
+  select(`VMONTH`,`RX1CAT1`,DRUGID1)%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))
+
+namcs2016<-namcs2016_full%>%
+  select(`VMONTH`, `RX1CAT1`,DRUGID1)%>%
+  filter(grepl('Anti-infectives', RX1CAT1))%>%
+  filter(!str_detect(RX1CAT1, "antifungal"))%>%
+  filter(!str_detect(RX1CAT1, "antiviral"))%>%
+  filter(!str_detect(RX1CAT1, "amebicides"))%>%
+  filter(!str_detect(RX1CAT1, "antimalarial"))%>%
+  filter(!str_detect(RX1CAT1, "anthelmintics"))
+
+
+```
+
+
+```{r}
+namcs2018_anti<-namcs2018_anti%>%
+  rename(aware_cat=Category)%>%
+  mutate(aware_cat=as.factor(aware_cat))%>%
+  mutate(season=case_when(VMONTH %in% c("March","April","May") ~ "Spring",
+                          VMONTH %in% c("June","July","August") ~ "Summer",
+                          VMONTH %in% c("September","October","November") ~ "Fall",
+                          VMONTH %in% c("December","January","February") ~ "Winter"))%>%
+  filter(aware_cat!="Reserve")%>%
+  mutate(major_cat=case_when(MAJOR %in% c("New problem (less than 3 mos. onset)")~ "New problem",
+                             MAJOR %in% c("Chronic problem, routine","Chronic problem, flare-up")~ "Chronic",
+                             MAJOR %in% c("Pre-surgery", "Post-surgery")~ "Surgery related",
+                             MAJOR %in% c("Preventive care")~"Preventive care"))%>%
+  filter(major_cat!="Missing")%>%
+  mutate(major_cat=as.factor(major_cat))%>%
+  mutate(major_cat=relevel(major_cat, ref= c("Chronic")))
+  # mutate(PRIMCARE=recode_factor(.x=PRIMCARE,
+  #                                `Blank` =NA))
+
+                          
+#write.csv(namcs2018_anti, file = "antibio_NAMCS_18.csv")
+# summary(namcs2018_anti)
+# lapply(namcs2018_anti,class)
+```
+
+```{r}
+#table 1
+
+label(namcs2018_anti$AGE)<-"Age (years)"
+label(namcs2018_anti$SEX)<-"Sex"
+label(namcs2018_anti$RACERETH)<-"Race"
+label(namcs2018_anti$season)<-"Season"
+label(namcs2018_anti$timemd_int)<-"Total Appointment Time"
+label(namcs2018_anti$SENBEFOR)<-"PT Seen Before"
+label(namcs2018_anti$PRIMCARE)<-"Patient's PCP"
+label(namcs2018_anti$major_cat)<-"Reason for Visit"
+label(namcs2018_anti$PASTVIS)<-"Visits in Last 12 Mo"
+label(namcs2018_anti$TIMEMD)<-"Total Appointment Time"
+
+
+
+namcs_tbl1<-table1(~ AGE + RACERETH + SEX+ timemd_int + major_cat +PASTVIS | aware_cat, data=namcs2018_anti, topclass="Rtable1-zebra", render.continuous=c(.="Median [IQR]"))
+```
+
+```{r}
+
+namcs2018_anti%>%
+  ggplot(aes(x=TIMEMD))+
+  geom_boxplot()+
+  theme_minimal()+
+  scale_fill_brewer(palette = 'Paired')
+
+
+namcs2018_anti%>%
+ ggplot(aes(x=PASTVIS))+
+  geom_histogram()+
+  theme_minimal()
+namcs2018_anti%>%
+ ggplot(aes(x=TIMEMD))+
+  geom_histogram()+
+  theme_minimal()
+```
+
+```{r}
+#logistic regression namcs2018
+lr_namcs<-glm(aware_cat ~ timemd_int + AGE + SEX + RACERETH + PASTVIS + major_cat, 
+                      data=namcs2018_anti, 
+                      family="binomial")
+
+
+
+odds_namcs<-odds.n.ends(lr_namcs)
+
+
+```
+
+```{r}
+#creation of time series dataset
+#2012
+month12<-data.frame(count(namcs2012,VMONTH))
+month12<-month12%>%
+  add_column(t=paste(.$VMONTH,"2012",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+#2013
+month13<-data.frame(count(namcs2013,VMONTH))
+month13<-month13%>%
+  add_column(t=paste(.$VMONTH,"2013",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+#2014
+month14<-data.frame(count(namcs2014,VMONTH))
+month14<-month14%>%
+  add_column(t=paste(.$VMONTH,"2014",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+#2014
+month15<-data.frame(count(namcs2015,VMONTH))
+month15<-month15%>%
+  add_column(t=paste(.$VMONTH,"2015",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+#2016
+month16<-data.frame(count(namcs2016,VMONTH))
+month16<-month16%>%
+  add_column(t=paste(.$VMONTH,"2016",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+#2018
+month18<-data.frame(count(namcs2018_anti,VMONTH))
+month18<-month18%>%
+  add_column(t=paste(.$VMONTH,"2018",sep=" "))%>%
+  mutate(t=lubridate::my(t))
+
+
+namcs_count<-rbind(month12,month13,month14,month15,month16,month18)
+namcs_count<-namcs_count%>%
+  select(`n`)
+
+# write.csv(namcs_count, file = "namcs_ts.csv")
+```
+
+```{r}
+namcs_ts<-ts(namcs_count, start=c(2012,1), end=c(2016,12),frequency= 12)
+plot.ts(namcs_ts)
+
+components_ts = decompose(namcs_ts)
+plot(components_ts)
+
+acf<-acf(namcs_ts, lag.max=300)
+pacf<-pacf(namcs_ts, lag.max=300)
+
+acf
+pacf
+
+namcs_fit<-auto.arima(namcs_ts)
+namcs_fit
+
+
+#arima confidence intervals
+confint(namcs_fit)
+#box-ljung test of independence at all lags
+acf(namcs_fit$residuals)
+library(FitAR)
+boxresult<-LjungBoxTest(namcs_fit$residuals,k=2,StartLag=1)
+plot(boxresult[,3],main= "Ljung-Box Q Test", ylab= "P-values", xlab= "Lag")
+qqnorm(namcs_fit$residuals)
+qqline(namcs_fit$residuals)
+
+#ACF of residuals show no significant autocorrelation, assumption passed
+
+#forcasting
+predict(namcs_fit,n.ahead = 24)
+future_namcs <-forecast(namcs_fit,h=24, level=c(99.5))
+plot(future_namcs)
+accuracy(future_namcs)
+```
+
+Assumptions:
+For Binary Logistic regression:
+*Linearity
+*Influence
+*Multicollinearity
+
+```{r}
+#namcs2018_anti
+namcs2018_anti <- namcs2018_anti %>%
+  mutate(time_logit = TIMEMD * log(TIMEMD)) 
+box_tidwell_time <- glm(aware_cat ~ TIMEMD + time_logit, data=namcs2018_anti, family="binomial") 
+
+summary (box_tidwell_time) #failed, categorized in final regression to meet assumption
+
+namcs2018_anti <- namcs2018_anti %>%
+  mutate(vis_logit = PASTVIS * log(PASTVIS)) 
+box_tidwell_vis <- glm(aware_cat ~ PASTVIS + vis_logit, data=namcs2018_anti, family="binomial") 
+
+summary(box_tidwell_vis)
+
+namcs2018_anti <- namcs2018_anti %>%
+  mutate(age_logit = AGE * log(AGE)) 
+box_tidwell_age <- glm(aware_cat ~ AGE + age_logit, data=namcs2018_anti, family="binomial") 
+
+summary(box_tidwell_age) #passed
+
+#A significant coefficient means the assumption is violated.
+
+#influential observations
+plot(lr_namcs, which=4, id.n=5, col="red") 
+cutoff <- 0.0015 
+
+#identify observations with a Cook's Distance greater than cutoff
+obs_no <- as.data.frame(cooks.distance(lr_namcs)) %>%
+  mutate(obs_no=row_number()) %>%
+  filter(`cooks.distance(lr_namcs)` > cutoff)
+
+#Let's exclude the values shown in the Cook's D plot, and see how the models compare.
+
+lr_noinf <- update(lr_namcs,subset=c(-obs_no$obs_no))
+summary(r1_noinf)
+
+#compare coefficients between models with and without influential observations, #caveat model number of observations is not the same
+car::compareCoefs(lr_namcs, lr_noinf) 
+
+#multicolliniarity
+#VIF for multicolliniarity, if >2 assumption is failed
+car::vif(mod = lr_namcs) #passed
+```
+
