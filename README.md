@@ -1,6 +1,6 @@
 # antibio_use_capstone22
 Visit Timing on the Prediction of Antibiotic Utilization Patterns in Ambulatory Care. For Brown School MPH capstone '22
-
+--------------------------------------------------------------------------------------------------------------------------
 Main data is downloaded from the CDC's NAMCS datasets (https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/).
 Classification of antibiotics type is according to WHO-EMP-IAU-2019.11-eng.xlsx
 Download WHO-EMP-IAU-2019.11-eng.xlsx to run code.
