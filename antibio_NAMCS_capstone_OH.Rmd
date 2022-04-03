@@ -29,32 +29,31 @@ library(forecast)
 
 ```{r, load-data, echo=false}
 #dataset for regression
-namcs2018_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2018-spss.sav", to.data.frame=TRUE
-    )
-
+#2018
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/NAMCS18-spss.zip", destfile = temp)
+namcs2018_full <- read_xpt(file = temp)
 #historical datasets for time series
-namcs2012_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2012-spss.sav", to.data.frame=TRUE
-    )
-namcs2013_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2013-spss.sav", to.data.frame=TRUE
-    )
-namcs2014_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2014-spss.sav", to.data.frame=TRUE
-    )
-namcs2015_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2015-spss.sav", to.data.frame=TRUE
-    )
-namcs2016_full <-
-  read.spss(
-    "C:/Users/16206/Documents/MPH/Capstone/NAMCS2016-spss.sav", to.data.frame=TRUE
-    )
+#2012
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/namcs2012-spss.zip", destfile = temp)
+namcs2012_full <- read_xpt(file = temp)
+#2013
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/namcs2013-spss.zip", destfile = temp)
+namcs2013_full <- read_xpt(file = temp)
+#2014
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/namcs2014-spss.zip", destfile = temp)
+namcs2014_full <- read_xpt(file = temp)
+#2015
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/namcs2015-spss.zip", destfile = temp)
+namcs2015_full <- read_xpt(file = temp)
+#2016
+temp <- tempfile(fileext = ".zip")
+download.file(url  = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/dataset_documentation/namcs/spss/namcs2016-spss.zip", destfile = temp)
+namcs2016_full <- read_xpt(file = temp)
 ```
 
 ## Data Cleaning
@@ -186,9 +185,6 @@ namcs2018_anti<-namcs2018_anti%>%
   filter(major_cat!="Missing")%>%
   mutate(major_cat=as.factor(major_cat))%>%
   mutate(major_cat=relevel(major_cat, ref= c("Chronic")))
-  # mutate(PRIMCARE=recode_factor(.x=PRIMCARE,
-  #                                `Blank` =NA))
-
                           
 #write.csv(namcs2018_anti, file = "antibio_NAMCS_18.csv")
 # summary(namcs2018_anti)
